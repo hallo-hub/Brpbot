@@ -25,19 +25,19 @@ export interface ManagedMessageRef {
   key: string | null;
 }
 
-/** Holt die gespeicherte Referenz einer dauerhaften Nachricht, falls vorhanden. */
+/**
+ * Holt die gespeicherte Referenz einer dauerhaften Nachricht, falls vorhanden.
+ */
 export async function getManagedMessage(
   guildId: string,
   type: string,
   key?: string
 ): Promise<ManagedMessageRef | null> {
-  const entry = await prisma.managedMessage.findUnique({
+  const entry = await prisma.managedMessage.findFirst({
     where: {
-      guildId_type_key: {
-        guildId,
-        type,
-        key: key ?? null,
-      },
+      guildId,
+      type,
+      key: key ?? null,
     },
   });
 
@@ -66,45 +66,64 @@ export async function upsertManagedMessage(params: {
 }): Promise<void> {
   await ensureGuildSettings(params.guildId);
 
-  await prisma.managedMessage.upsert({
+  const existing = await prisma.managedMessage.findFirst({
     where: {
-      guildId_type_key: {
-        guildId: params.guildId,
-        type: params.type,
-        key: params.key ?? null,
-      },
+      guildId: params.guildId,
+      type: params.type,
+      key: params.key ?? null,
     },
-    create: {
+  });
+
+  if (existing) {
+    await prisma.managedMessage.update({
+      where: {
+        id: existing.id,
+      },
+      data: {
+        channelId: params.channelId,
+        messageId: params.messageId,
+      },
+    });
+
+    return;
+  }
+
+  await prisma.managedMessage.create({
+    data: {
       guildId: params.guildId,
       channelId: params.channelId,
       messageId: params.messageId,
       type: params.type,
       key: params.key ?? null,
     },
-    update: {
-      channelId: params.channelId,
-      messageId: params.messageId,
-    },
   });
 }
 
-/** Entfernt die Referenz auf eine dauerhafte Nachricht (z.B. bei Löschung). */
+/**
+ * Entfernt die Referenz auf eine dauerhafte Nachricht (z.B. bei Löschung).
+ */
 export async function deleteManagedMessage(
   guildId: string,
   type: string,
   key?: string
 ): Promise<void> {
+  const existing = await prisma.managedMessage.findFirst({
+    where: {
+      guildId,
+      type,
+      key: key ?? null,
+    },
+  });
+
+  if (!existing) return;
+
   await prisma.managedMessage
     .delete({
       where: {
-        guildId_type_key: {
-          guildId,
-          type,
-          key: key ?? null,
-        },
+        id: existing.id,
       },
     })
     .catch(() => {
-      // Existierte ohnehin nicht – kein Problem.
+      // Existierte inzwischen nicht mehr – kein Problem.
     });
 }
