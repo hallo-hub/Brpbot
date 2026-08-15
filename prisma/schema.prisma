@@ -41,6 +41,12 @@ model GuildSettings {
   properties      Property[]
   welcomeSettings WelcomeSettings?
   welcomeRecords  WelcomeRecord[]
+  rpSettings      RpSettings?
+  rpStatus        RpStatus?
+  voiceSupportSettings VoiceSupportSettings?
+  voiceSupportSessions VoiceSupportSession[]
+  teamListSettings TeamListSettings?
+  teamListEntries  TeamListEntry[]
 
   @@map("guild_settings")
 }
@@ -243,4 +249,166 @@ model WelcomeRecord {
   @@unique([guildId, userId])
   @@index([guildId])
   @@map("welcome_records")
+}
+
+// ============================================================================
+// Modul: RP-Status-System
+// ----------------------------------------------------------------------------
+// RpSettings: konfigurierbare Werte pro Guild (Kanäle, Servercode,
+// Ping-Rollen, Texte, Farbe). RpStatus: der eigentliche Live-Status (aktuell
+// offen/geschlossen, wer hat gestartet/beendet, wann). Die zugehörige
+// dauerhafte Status-Nachricht wird über das bereits vorhandene
+// ManagedMessage-System verwaltet (Typ "rp_status") und hier bewusst NICHT
+// erneut gespeichert, um Redundanz zu vermeiden.
+// ============================================================================
+
+enum RpStatusValue {
+  OPEN
+  CLOSED
+}
+
+model RpSettings {
+  id        String  @id @default(cuid())
+  guildId   String  @unique
+
+  statusChannelId       String?
+  announcementChannelId String?
+
+  servercode   String?
+  // Kommagetrennte Rollen-IDs, die bei Start/Stop gepingt werden.
+  pingRoleIds  String?
+
+  rpStartText  String? @db.Text
+  rpStopText   String? @db.Text
+
+  embedColor   String?
+
+  guild     GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("rp_settings")
+}
+
+model RpStatus {
+  id        String        @id @default(cuid())
+  guildId   String        @unique
+
+  status    RpStatusValue @default(CLOSED)
+
+  startedAt DateTime?
+  endedAt   DateTime?
+  startedBy String?
+  endedBy   String?
+
+  guild     GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("rp_status")
+}
+
+// ============================================================================
+// Modul: Voice-Support-System
+// ----------------------------------------------------------------------------
+// VoiceSupportSettings: Konfiguration pro Guild (Warteraum, Ping-Kanal,
+// Ping-Rollen, welche Rollen Fälle übernehmen dürfen). VoiceSupportSession:
+// ein Datensatz pro Support-Fall (wartend/übernommen/geschlossen).
+// ============================================================================
+
+enum VoiceSupportStatus {
+  WAITING
+  CLAIMED
+  CLOSED
+}
+
+model VoiceSupportSettings {
+  id      String @id @default(cuid())
+  guildId String @unique
+
+  waitingRoomChannelId String?
+  pingChannelId        String?
+
+  // Kommagetrennte Rollen-IDs.
+  pingRoleIds  String?
+  // Wer Fälle übernehmen/übergeben/schließen darf. Leer -> Fallback auf
+  // Team/High-Team/Admin-Rollen aus der zentralen Config.
+  claimRoleIds String?
+
+  guild     GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("voice_support_settings")
+}
+
+model VoiceSupportSession {
+  id      String @id @default(cuid())
+  guildId String
+  userId  String
+
+  // Voice-Channel, in dem der Fall bearbeitet wird (Warteraum des Users).
+  channelId String
+
+  pingChannelId String?
+  pingMessageId String?
+
+  status VoiceSupportStatus @default(WAITING)
+
+  claimedBy String?
+  claimedAt DateTime?
+
+  closedBy String?
+  closedAt DateTime?
+
+  guild     GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([guildId, status])
+  @@index([guildId, userId])
+  @@map("voice_support_sessions")
+}
+
+// ============================================================================
+// Modul: Team-Listen-System
+// ----------------------------------------------------------------------------
+// TeamListSettings: Zielkanal für die dauerhafte Team-Liste. TeamListEntry:
+// eine konfigurierte Rolle inkl. Reihenfolge (position), die in der Liste
+// angezeigt wird.
+// ============================================================================
+
+model TeamListSettings {
+  id      String @id @default(cuid())
+  guildId String @unique
+
+  channelId String?
+
+  guild     GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("team_list_settings")
+}
+
+model TeamListEntry {
+  id       String @id @default(cuid())
+  guildId  String
+  roleId   String
+  position Int    @default(0)
+  label    String?
+
+  guild    GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([guildId, roleId])
+  @@index([guildId, position])
+  @@map("team_list_entries")
 }

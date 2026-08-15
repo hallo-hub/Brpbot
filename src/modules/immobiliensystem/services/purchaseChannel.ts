@@ -39,7 +39,7 @@ export function buildPurchaseEmbed(property: Property, buyerId: string, status: 
     { name: "Preis", value: formatEuro(property.price), inline: true },
     { name: "Status", value: status }
   ).setDescription(
-    "Bitte sende hier deine **IC-Überweisung** und einen **Screenshot** als Zahlungsnachweis, Das Geld bitte an den User **Kavaro_13**. " +
+    "Bitte sende hier deine **IC-Überweisung** und einen **Screenshot** als Zahlungsnachweis. " +
       "Der Bot prüft keine Zahlungen automatisch – das Team bestätigt den Kauf manuell."
   );
 }
