@@ -7,8 +7,7 @@ import { logger } from "./utils/logger";
 /**
  * Registriert alle Slash Commands aus src/commands und src/modules/*\/commands
  * bei Discord (Guild-Commands – erscheinen sofort, im Gegensatz zu globalen
- * Commands, die bis zu 1h zum Ausrollen brauchen). Wird separat vom Bot
- * selbst ausgeführt: `npm run deploy-commands`.
+ * Commands, die bis zu 1h zum Ausrollen brauchen).
  */
 
 function findCommandFiles(dir: string): string[] {
@@ -31,7 +30,7 @@ function findCommandFiles(dir: string): string[] {
   return files;
 }
 
-async function main() {
+export async function registerCommands(): Promise<number> {
   const commandsDir = path.join(__dirname, "commands");
   const modulesDir = path.join(__dirname, "modules");
 
@@ -67,9 +66,16 @@ async function main() {
   });
 
   logger.info("DeployCommands", "Commands erfolgreich registriert.");
+  return body.length;
 }
 
-main().catch((error) => {
-  logger.error("DeployCommands", "Fehler beim Registrieren der Commands", error);
-  process.exit(1);
-});
+async function main() {
+  await registerCommands();
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    logger.error("DeployCommands", "Fehler beim Registrieren der Commands", error);
+    process.exit(1);
+  });
+}

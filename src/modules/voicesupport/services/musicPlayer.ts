@@ -68,8 +68,15 @@ function playNextTrack(guildId: string): void {
     return;
   }
 
-  const resource = createAudioResource(track);
-  playback.player.play(resource);
+  try {
+    // Eine Dateipfad-Ressource wird von @discordjs/voice über FFmpeg in Opus
+    // umgewandelt. Dadurch funktionieren MP3/WAV/M4A/OGG auch auf Render,
+    // wo kein systemweites ffmpeg vorausgesetzt werden darf.
+    const resource = createAudioResource(track);
+    playback.player.play(resource);
+  } catch (error) {
+    logger.error(SCOPE, `Track konnte nicht gestartet werden: ${track}`, error);
+  }
 }
 
 /** Startet die Wartemusik im angegebenen Voice-Channel (tritt bei Bedarf bei). Läuft in Endlosschleife, bis stopWaitingMusic() aufgerufen wird. */

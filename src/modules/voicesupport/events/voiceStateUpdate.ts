@@ -32,8 +32,13 @@ async function handleJoin(
 
   const session = await createSession({ guildId, userId, channelId: waitingRoom.id });
 
-  // Wartemusik starten (Bot tritt dem Warteraum bei).
-  await startWaitingMusic(waitingRoom);
+  // Die Musik ist optional: Ein FFmpeg-/Voice-Fehler darf nicht verhindern,
+  // dass der Fall angelegt und das Support-Team gepingt wird.
+  try {
+    await startWaitingMusic(waitingRoom);
+  } catch (error) {
+    logger.error(SCOPE, `Wartemusik konnte nicht gestartet werden (Guild ${guildId})`, error);
+  }
 
   // Team pingen, falls ein Ping-Kanal konfiguriert ist.
   if (settings.pingChannelId) {

@@ -8,6 +8,7 @@ import { loadCommands } from "./handlers/loadCommands";
 import { loadEvents } from "./handlers/loadEvents";
 import { loadInteractionHandlers } from "./handlers/loadInteractionHandlers";
 import { startHealthServer } from "./utils/healthServer";
+import { registerCommands } from "./deployCommands";
 
 async function main(): Promise<void> {
   registerGlobalErrorHandlers();
@@ -36,6 +37,9 @@ async function main(): Promise<void> {
 
   logger.info("Bootstrap", "Lade Commands ...");
   await loadCommands(client);
+
+  logger.info("Bootstrap", "Registriere Slash-Commands bei Discord ...");
+  await registerCommands();
 
   logger.info("Bootstrap", "Lade Interaktions-Handler (Buttons/Select-Menus/Modals) ...");
   await loadInteractionHandlers(client);
