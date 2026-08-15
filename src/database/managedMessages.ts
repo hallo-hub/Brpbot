@@ -31,15 +31,20 @@ export async function getManagedMessage(
   type: string,
   key?: string
 ): Promise<ManagedMessageRef | null> {
-  const entry = await prisma.managedMessage.findUnique({
-    where: {
-      guildId_type_key: {
-        guildId,
-        type,
-        key: key ?? null,
-      },
-    },
-  });
+  const entry =
+    key === undefined
+      ? await prisma.managedMessage.findFirst({
+          where: { guildId, type, key: null },
+        })
+      : await prisma.managedMessage.findUnique({
+          where: {
+            guildId_type_key: {
+              guildId,
+              type,
+              key,
+            },
+          },
+        });
 
   if (!entry) return null;
 
@@ -66,24 +71,53 @@ export async function upsertManagedMessage(params: {
 }): Promise<void> {
   await ensureGuildSettings(params.guildId);
 
-  await prisma.managedMessage.upsert({
-    where: {
-      guildId_type_key: {
-        guildId: params.guildId,
-        type: params.type,
-        key: params.key ?? null,
+  if (params.key !== undefined) {
+    await prisma.managedMessage.upsert({
+      where: {
+        guildId_type_key: {
+          guildId: params.guildId,
+          type: params.type,
+          key: params.key,
+        },
       },
-    },
-    create: {
+      create: {
+        guildId: params.guildId,
+        channelId: params.channelId,
+        messageId: params.messageId,
+        type: params.type,
+        key: params.key,
+      },
+      update: {
+        channelId: params.channelId,
+        messageId: params.messageId,
+      },
+    });
+    return;
+  }
+
+  const existing = await prisma.managedMessage.findFirst({
+    where: { guildId: params.guildId, type: params.type, key: null },
+    select: { id: true },
+  });
+
+  if (existing) {
+    await prisma.managedMessage.update({
+      where: { id: existing.id },
+      data: {
+        channelId: params.channelId,
+        messageId: params.messageId,
+      },
+    });
+    return;
+  }
+
+  await prisma.managedMessage.create({
+    data: {
       guildId: params.guildId,
       channelId: params.channelId,
       messageId: params.messageId,
       type: params.type,
-      key: params.key ?? null,
-    },
-    update: {
-      channelId: params.channelId,
-      messageId: params.messageId,
+      key: null,
     },
   });
 }
@@ -94,17 +128,29 @@ export async function deleteManagedMessage(
   type: string,
   key?: string
 ): Promise<void> {
-  await prisma.managedMessage
-    .delete({
-      where: {
-        guildId_type_key: {
-          guildId,
-          type,
-          key: key ?? null,
+  if (key !== undefined) {
+    await prisma.managedMessage
+      .delete({
+        where: {
+          guildId_type_key: {
+            guildId,
+            type,
+            key,
+          },
         },
-      },
-    })
-    .catch(() => {
-      // Existierte ohnehin nicht – kein Problem.
-    });
+      })
+      .catch(() => {
+        // Existierte ohnehin nicht – kein Problem.
+      });
+    return;
+  }
+
+  const existing = await prisma.managedMessage.findFirst({
+    where: { guildId, type, key: null },
+    select: { id: true },
+  });
+
+  if (existing) {
+    await prisma.managedMessage.delete({ where: { id: existing.id } });
+  }
 }

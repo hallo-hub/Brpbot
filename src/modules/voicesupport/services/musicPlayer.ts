@@ -88,7 +88,10 @@ export async function startWaitingMusic(channel: VoiceChannel): Promise<void> {
   const connection = joinVoiceChannel({
     channelId: channel.id,
     guildId: channel.guild.id,
-    adapterCreator: channel.guild.voiceAdapterCreator,
+    // discord.js and @discordjs/voice can resolve different copies of
+    // discord-api-types when installed without a lockfile. The adapter API is
+    // compatible, but the duplicated type declarations are not.
+    adapterCreator: channel.guild.voiceAdapterCreator as Parameters<typeof joinVoiceChannel>[0]["adapterCreator"],
     selfDeaf: true,
   });
 

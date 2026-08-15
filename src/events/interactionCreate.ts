@@ -17,7 +17,7 @@ async function checkPermission(
   interaction: Interaction,
   required: PermissionLevel | undefined
 ): Promise<boolean> {
-  if (!required || required === PermissionLevel.Everyone) return true;
+  if (required === undefined || required === PermissionLevel.Everyone) return true;
   if (!interaction.inGuild() || !interaction.member || !("roles" in interaction.member)) {
     return true; // Außerhalb einer Guild gibt es keine Rollenprüfung.
   }
