@@ -68,15 +68,8 @@ function playNextTrack(guildId: string): void {
     return;
   }
 
-  try {
-    // Eine Dateipfad-Ressource wird von @discordjs/voice über FFmpeg in Opus
-    // umgewandelt. Dadurch funktionieren MP3/WAV/M4A/OGG auch auf Render,
-    // wo kein systemweites ffmpeg vorausgesetzt werden darf.
-    const resource = createAudioResource(track);
-    playback.player.play(resource);
-  } catch (error) {
-    logger.error(SCOPE, `Track konnte nicht gestartet werden: ${track}`, error);
-  }
+  const resource = createAudioResource(track);
+  playback.player.play(resource);
 }
 
 /** Startet die Wartemusik im angegebenen Voice-Channel (tritt bei Bedarf bei). Läuft in Endlosschleife, bis stopWaitingMusic() aufgerufen wird. */
@@ -95,10 +88,7 @@ export async function startWaitingMusic(channel: VoiceChannel): Promise<void> {
   const connection = joinVoiceChannel({
     channelId: channel.id,
     guildId: channel.guild.id,
-    // discord.js and @discordjs/voice can resolve different copies of
-    // discord-api-types when installed without a lockfile. The adapter API is
-    // compatible, but the duplicated type declarations are not.
-    adapterCreator: channel.guild.voiceAdapterCreator as Parameters<typeof joinVoiceChannel>[0]["adapterCreator"],
+    adapterCreator: channel.guild.voiceAdapterCreator,
     selfDeaf: true,
   });
 

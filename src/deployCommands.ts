@@ -8,6 +8,12 @@ import { logger } from "./utils/logger";
  * Registriert alle Slash Commands aus src/commands und src/modules/*\/commands
  * bei Discord (Guild-Commands – erscheinen sofort, im Gegensatz zu globalen
  * Commands, die bis zu 1h zum Ausrollen brauchen).
+ *
+ * Kann auf zwei Arten genutzt werden:
+ *  1. Eigenständig: `npm run deploy-commands` (nutzt den main()-Block unten)
+ *  2. Automatisch beim Bot-Start: index.ts importiert deployCommands() und
+ *     ruft es bei jedem Boot auf – praktisch für Render Free, wo keine Shell
+ *     zur Verfügung steht, um den Command manuell auszuführen.
  */
 
 function findCommandFiles(dir: string): string[] {
@@ -30,7 +36,7 @@ function findCommandFiles(dir: string): string[] {
   return files;
 }
 
-export async function registerCommands(): Promise<number> {
+export async function deployCommands(): Promise<void> {
   const commandsDir = path.join(__dirname, "commands");
   const modulesDir = path.join(__dirname, "modules");
 
@@ -66,15 +72,12 @@ export async function registerCommands(): Promise<number> {
   });
 
   logger.info("DeployCommands", "Commands erfolgreich registriert.");
-  return body.length;
 }
 
-async function main() {
-  await registerCommands();
-}
-
+// Eigenständige Ausführung: `npm run deploy-commands`. Wird beim Import
+// durch index.ts NICHT ausgelöst, da require.main dann nicht dieses File ist.
 if (require.main === module) {
-  main().catch((error) => {
+  deployCommands().catch((error) => {
     logger.error("DeployCommands", "Fehler beim Registrieren der Commands", error);
     process.exit(1);
   });
