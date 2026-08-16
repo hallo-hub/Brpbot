@@ -1,0 +1,417 @@
+// ============================================================================
+// BayernRP All-in-One Bot – Datenbank-Grundschema
+// ----------------------------------------------------------------------------
+// Dies ist NUR die technische Grundlage. Modul-spezifische Tabellen
+// (Immobilien, Fraktionen, Bewerbungen, ...) werden in eigenen Migrationen
+// ergänzt, sobald das jeweilige Modul entwickelt wird. Dieses Schema bleibt
+// bewusst schlank und stellt nur die Bausteine bereit, die JEDES Modul
+// braucht.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// GuildSettings
+// Ein Datensatz pro Discord-Server. Modul-spezifische Einstellungen werden
+// später entweder als eigene Relation angehängt oder – für kleine Sachen –
+// als JSON in `extra` abgelegt, damit nicht für jede Kleinigkeit eine neue
+// Migration nötig ist.
+// ----------------------------------------------------------------------------
+model GuildSettings {
+  id        String   @id @default(cuid())
+  guildId   String   @unique
+
+  // Flexibler JSON-Speicher für zukünftige, noch unbekannte Einstellungen,
+  // ohne dass jedes Modul sofort eine eigene Spalte/Tabelle braucht.
+  extra     Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  managedMessages ManagedMessage[]
+  logEntries      LogEntry[]
+  users           GuildUser[]
+  properties      Property[]
+  welcomeSettings WelcomeSettings?
+  welcomeRecords  WelcomeRecord[]
+  rpSettings      RpSettings?
+  rpStatus        RpStatus?
+  voiceSupportSettings VoiceSupportSettings?
+  voiceSupportSessions VoiceSupportSession[]
+  teamListSettings TeamListSettings?
+  teamListEntries  TeamListEntry[]
+
+  @@map("guild_settings")
+}
+
+// ----------------------------------------------------------------------------
+// GuildUser
+// Server-bezogene Nutzerdaten (kein globales Discord-User-Profil, sondern
+// pro Guild – z.B. für spätere Statistiken, Bewerbungshistorie etc.)
+// ----------------------------------------------------------------------------
+model GuildUser {
+  id        String   @id @default(cuid())
+  guildId   String
+  userId    String
+
+  guild     GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  extra     Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([guildId, userId])
+  @@index([guildId])
+  @@map("guild_users")
+}
+
+// ----------------------------------------------------------------------------
+// ManagedMessage
+// Kern des "automatische Embed-Verwaltung"-Systems: jede dauerhafte Liste
+// (Immobilienliste, Fraktionsliste, Regelwerk, Bewerbungspanel, ...) wird
+// hier referenziert. Anstatt neue Nachrichten zu senden, editiert der Bot
+// die hinterlegte messageId.
+// ----------------------------------------------------------------------------
+model ManagedMessage {
+  id         String   @id @default(cuid())
+  guildId    String
+  channelId  String
+  messageId  String
+
+  // Eindeutiger Typ-Schlüssel des jeweiligen Moduls, z.B.:
+  // "immobilien_liste", "fraktionen_liste", "regelwerk_discord",
+  // "bewerbung_panel", "dashboard_panel", ...
+  type       String
+
+  // Optionaler Schlüssel, falls es mehrere Instanzen desselben Typs geben
+  // kann (z.B. mehrere Regelwerke). Bei einzigartigen Panels bleibt er ein
+  // leerer String (bewusst NICHT nullable, da Prisma nullable Felder in
+  // zusammengesetzten @@unique-Indizes je nach Version unterschiedlich streng
+  // typisiert / behandelt).
+  key        String @default("")
+
+  guild      GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([guildId, type, key])
+  @@index([guildId, type])
+  @@map("managed_messages")
+}
+
+// ----------------------------------------------------------------------------
+// LogEntry
+// Grundlage für das spätere Logger-Modul. Bewusst generisch gehalten, damit
+// Mitglieder-, Nachrichten-, Voice- und Server-Logs dieselbe Tabelle nutzen
+// können, statt vier Spezialtabellen zu benötigen.
+// ----------------------------------------------------------------------------
+model LogEntry {
+  id          String   @id @default(cuid())
+  guildId     String
+
+  // z.B. "member_join", "member_leave", "message_delete", "voice_join", ...
+  category    String
+
+  executorId  String?
+  targetId    String?
+  channelId   String?
+
+  // Beliebige strukturierte Zusatzdaten (Vorher/Nachher, Details, ...)
+  data        Json?
+
+  guild       GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@index([guildId, category])
+  @@index([guildId, createdAt])
+  @@map("log_entries")
+}
+
+// ============================================================================
+// Modul: Immobilien-System
+// ----------------------------------------------------------------------------
+// Reine Discord-Verwaltung von Immobilien (kein Ingame-RP-Bezug). Jede
+// Immobilie gehört zu genau einer Guild und hat eine eigene, dauerhafte
+// Discord-Rolle (roleId), die beim ersten Verkauf angelegt und danach nur
+// noch weitergegeben wird.
+// ============================================================================
+
+enum PropertyStatus {
+  FREE
+  RESERVED
+  SOLD
+}
+
+model Property {
+  id          String         @id @default(cuid())
+  guildId     String
+
+  // Immobiliennummer als String, damit Formate wie "41A" / "41B" möglich sind.
+  number      String
+
+  price       Int
+  status      PropertyStatus @default(FREE)
+
+  // Aktueller Besitzer (nur gesetzt, wenn status = SOLD).
+  ownerId          String?
+  ownerDisplayName String?
+
+  // Discord-Rolle, die genau dieser Immobilie zugeordnet ist. Wird beim
+  // ersten Verkauf einmalig erstellt und danach wiederverwendet.
+  roleId      String?
+
+  // Reservierung (status = RESERVED), bis Team-Bestätigung oder Ablehnung.
+  reservedBy  String?
+  reservedAt  DateTime?
+
+  // Referenz auf den privaten Kauf-Channel, damit er beim Abschluss/Abbruch
+  // wiedergefunden und aufgeräumt werden kann.
+  purchaseChannelId String?
+
+  // Kauf-/Verwaltungsformular, das der Käufer im Kauf-Channel ausfüllt.
+  formObjektArt   String?
+  formNutzung     String? @db.Text
+  formRpGrund     String? @db.Text
+  formZusatzInfo  String? @db.Text
+  formSubmittedAt DateTime?
+
+  guild       GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, number])
+  @@index([guildId, status])
+  @@map("properties")
+}
+
+// ============================================================================
+// Modul: Willkommen & Verabschiedung
+// ----------------------------------------------------------------------------
+// WelcomeSettings: ein Datensatz pro Guild mit allen über /dashboard
+// einstellbaren Werten. WelcomeRecord: ein Datensatz pro Guild+User mit
+// Join-/Leave-Zeitpunkt und optionalem Austrittsfeedback.
+// ============================================================================
+
+model WelcomeSettings {
+  id        String  @id @default(cuid())
+  guildId   String  @unique
+
+  welcomeChannelId  String?
+  leaveChannelId    String?
+  feedbackChannelId String?
+
+  joinDmEnabled  Boolean @default(true)
+  leaveDmEnabled Boolean @default(true)
+
+  // Editierbare Texte (Platzhalter {user}/{mention}/{server} werden beim
+  // Senden ersetzt). Bewusst optional, es gibt sinnvolle Standardtexte.
+  welcomeText   String? @db.Text
+  welcomeDmText String? @db.Text
+  leaveText     String? @db.Text
+  leaveDmText   String? @db.Text
+
+  embedColor String?
+  imageUrl   String?
+  thumbnailUrl String?
+
+  guild     GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("welcome_settings")
+}
+
+model WelcomeRecord {
+  id          String    @id @default(cuid())
+  guildId     String
+  userId      String
+
+  joinedAt    DateTime?
+  leftAt      DateTime?
+
+  feedback    String?   @db.Text
+  feedbackAt  DateTime?
+
+  guild       GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, userId])
+  @@index([guildId])
+  @@map("welcome_records")
+}
+
+// ============================================================================
+// Modul: RP-Status-System
+// ----------------------------------------------------------------------------
+// RpSettings: konfigurierbare Werte pro Guild (Kanäle, Servercode,
+// Ping-Rollen, Texte, Farbe). RpStatus: der eigentliche Live-Status (aktuell
+// offen/geschlossen, wer hat gestartet/beendet, wann). Die zugehörige
+// dauerhafte Status-Nachricht wird über das bereits vorhandene
+// ManagedMessage-System verwaltet (Typ "rp_status") und hier bewusst NICHT
+// erneut gespeichert, um Redundanz zu vermeiden.
+// ============================================================================
+
+enum RpStatusValue {
+  OPEN
+  CLOSED
+}
+
+model RpSettings {
+  id        String  @id @default(cuid())
+  guildId   String  @unique
+
+  statusChannelId       String?
+  announcementChannelId String?
+
+  servercode   String?
+  // Kommagetrennte Rollen-IDs, die bei Start/Stop gepingt werden.
+  pingRoleIds  String?
+
+  rpStartText  String? @db.Text
+  rpStopText   String? @db.Text
+
+  embedColor   String?
+
+  guild     GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("rp_settings")
+}
+
+model RpStatus {
+  id        String        @id @default(cuid())
+  guildId   String        @unique
+
+  status    RpStatusValue @default(CLOSED)
+
+  startedAt DateTime?
+  endedAt   DateTime?
+  startedBy String?
+  endedBy   String?
+
+  guild     GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("rp_status")
+}
+
+// ============================================================================
+// Modul: Voice-Support-System
+// ----------------------------------------------------------------------------
+// VoiceSupportSettings: Konfiguration pro Guild (Warteraum, Ping-Kanal,
+// Ping-Rollen, welche Rollen Fälle übernehmen dürfen). VoiceSupportSession:
+// ein Datensatz pro Support-Fall (wartend/übernommen/geschlossen).
+// ============================================================================
+
+enum VoiceSupportStatus {
+  WAITING
+  CLAIMED
+  CLOSED
+}
+
+model VoiceSupportSettings {
+  id      String @id @default(cuid())
+  guildId String @unique
+
+  waitingRoomChannelId String?
+  pingChannelId        String?
+
+  // Kommagetrennte Rollen-IDs.
+  pingRoleIds  String?
+  // Wer Fälle übernehmen/übergeben/schließen darf. Leer -> Fallback auf
+  // Team/High-Team/Admin-Rollen aus der zentralen Config.
+  claimRoleIds String?
+
+  guild     GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("voice_support_settings")
+}
+
+model VoiceSupportSession {
+  id      String @id @default(cuid())
+  guildId String
+  userId  String
+
+  // Voice-Channel, in dem der Fall bearbeitet wird (Warteraum des Users).
+  channelId String
+
+  pingChannelId String?
+  pingMessageId String?
+
+  status VoiceSupportStatus @default(WAITING)
+
+  claimedBy String?
+  claimedAt DateTime?
+
+  closedBy String?
+  closedAt DateTime?
+
+  guild     GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([guildId, status])
+  @@index([guildId, userId])
+  @@map("voice_support_sessions")
+}
+
+// ============================================================================
+// Modul: Team-Listen-System
+// ----------------------------------------------------------------------------
+// TeamListSettings: Zielkanal für die dauerhafte Team-Liste. TeamListEntry:
+// eine konfigurierte Rolle inkl. Reihenfolge (position), die in der Liste
+// angezeigt wird.
+// ============================================================================
+
+model TeamListSettings {
+  id      String @id @default(cuid())
+  guildId String @unique
+
+  channelId String?
+
+  guild     GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("team_list_settings")
+}
+
+model TeamListEntry {
+  id       String @id @default(cuid())
+  guildId  String
+  roleId   String
+  position Int    @default(0)
+  label    String?
+
+  guild    GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([guildId, roleId])
+  @@index([guildId, position])
+  @@map("team_list_entries")
+}
