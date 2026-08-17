@@ -11,7 +11,7 @@
     "deploy-commands": "node dist/deployCommands.js",
     "deploy-commands:dev": "ts-node-dev --transpile-only src/deployCommands.ts",
     "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push --accept-data-loss --skip-generate",
+    "prisma:push": "prisma db push --accept-data-loss --force-reset --skip-generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",
     "postinstall": "prisma generate"
