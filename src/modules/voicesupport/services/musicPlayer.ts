@@ -4,6 +4,7 @@ import { VoiceChannel } from "discord.js";
 import {
   AudioPlayer,
   AudioPlayerStatus,
+  DiscordGatewayAdapterCreator,
   NoSubscriberBehavior,
   VoiceConnection,
   VoiceConnectionStatus,
@@ -88,7 +89,12 @@ export async function startWaitingMusic(channel: VoiceChannel): Promise<void> {
   const connection = joinVoiceChannel({
     channelId: channel.id,
     guildId: channel.guild.id,
-    adapterCreator: channel.guild.voiceAdapterCreator,
+    // Cast nötig: discord.js und @discordjs/voice können durch npm ohne
+    // Lockfile leicht abweichende (aber kompatible) discord-api-types-Versionen
+    // in ihren jeweiligen node_modules mitbringen. TypeScript sieht das als
+    // zwei unterschiedliche Typen, obwohl beide zur Laufzeit identisch
+    // funktionieren. Daher hier bewusst ein Cast statt eines echten Fehlers.
+    adapterCreator: channel.guild.voiceAdapterCreator as unknown as DiscordGatewayAdapterCreator,
     selfDeaf: true,
   });
 

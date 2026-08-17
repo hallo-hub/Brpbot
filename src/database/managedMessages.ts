@@ -15,6 +15,11 @@ import { ensureGuildSettings } from "./guildSettings";
  *     (z.B. manuell gelöscht), neu senden und erneut upserten.
  *
  * So entstehen nie doppelte Listen/Panels.
+ *
+ * Hinweis: "key" ist bewusst ein leerer String ("") statt null, wenn kein
+ * spezifischer Schlüssel gebraucht wird - Prisma behandelt nullable Felder
+ * in zusammengesetzten @@unique-Indizes je nach Version unterschiedlich
+ * streng, ein leerer String vermeidet dieses Problem komplett.
  */
 
 export interface ManagedMessageRef {
@@ -22,7 +27,7 @@ export interface ManagedMessageRef {
   channelId: string;
   messageId: string;
   type: string;
-  key: string | null;
+  key: string;
 }
 
 /** Holt die gespeicherte Referenz einer dauerhaften Nachricht, falls vorhanden. */
@@ -36,7 +41,7 @@ export async function getManagedMessage(
       guildId_type_key: {
         guildId,
         type,
-        key: key ?? null,
+        key: key ?? "",
       },
     },
   });
@@ -66,12 +71,14 @@ export async function upsertManagedMessage(params: {
 }): Promise<void> {
   await ensureGuildSettings(params.guildId);
 
+  const key = params.key ?? "";
+
   await prisma.managedMessage.upsert({
     where: {
       guildId_type_key: {
         guildId: params.guildId,
         type: params.type,
-        key: params.key ?? null,
+        key,
       },
     },
     create: {
@@ -79,7 +86,7 @@ export async function upsertManagedMessage(params: {
       channelId: params.channelId,
       messageId: params.messageId,
       type: params.type,
-      key: params.key ?? null,
+      key,
     },
     update: {
       channelId: params.channelId,
@@ -100,7 +107,7 @@ export async function deleteManagedMessage(
         guildId_type_key: {
           guildId,
           type,
-          key: key ?? null,
+          key: key ?? "",
         },
       },
     })

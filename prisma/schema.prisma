@@ -92,8 +92,11 @@ model ManagedMessage {
   type       String
 
   // Optionaler Schlüssel, falls es mehrere Instanzen desselben Typs geben
-  // kann (z.B. mehrere Regelwerke). Bei einzigartigen Panels bleibt er leer.
-  key        String?
+  // kann (z.B. mehrere Regelwerke). Bei einzigartigen Panels bleibt er ein
+  // leerer String (bewusst NICHT nullable, da Prisma nullable Felder in
+  // zusammengesetzten @@unique-Indizes je nach Version unterschiedlich streng
+  // typisiert / behandelt).
+  key        String @default("")
 
   guild      GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
 
